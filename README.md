@@ -49,4 +49,8 @@ distribution packaging implementation (which is hopefully rare).
 ## Action Items
 
 - Provide validation for `.rot` manifests independent of HTTPS.
-- 
+- Make updates to packages less/non-racy:
+  - Randomize the order of package checking to avoid redundant work.
+  - Extract the project archives over their existing content and clean up files absent from the new project archive.
+  - Alternatively, extract to a unique directory and move it in place once complete (and handle conflicts in the renaming safely).
+- Treat other partitions as a package source.

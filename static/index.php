@@ -232,14 +232,17 @@ function set_active_configuration($mutable_directory, $config)
         die('Rot: Failed to write active configuration to file: ' . $active_config_path);
     }
     fclose($fp);
+    return true;
 }
 
 function freshen_up($mutable_directory, $partition, array $manifest, $max_to_freshen=false)
 {
     $freshened = 0;
+    $checked = 0;
     foreach($manifest['packages'] as $package_data)
     {
-        echo 'Rot: Checking package: ' . $package_data['name'] . PHP_EOL;
+        ++$checked;
+        echo 'Rot: [' . $checked . '/' . count($manifest['packages']) . '] Checking package: ' . $package_data['name'] . PHP_EOL;
         if (is_package_stale($mutable_directory, $partition, $package_data))
         {
             echo '  - Package is missing or stale.' . PHP_EOL;

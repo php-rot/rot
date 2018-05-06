@@ -48,7 +48,7 @@ distribution packaging implementation (which is hopefully rare).
 
 ## Action Items
 
-- Convert to a Composer plug-in.
+- Convert to a [Composer plug-in](https://getcomposer.org/doc/articles/plugins.md).
 - Have the release tool generate a fully materialized (recursively) manifest.
 - Provide validation for `.rot` manifests independent of HTTPS.
 - Make updates to packages less/non-racy:

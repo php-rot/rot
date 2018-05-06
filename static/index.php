@@ -94,18 +94,19 @@ function recursive_rmdir($dir) {
         //     }
         //     rmdir($dir);
         // }
+        return $success;
     }
-
-    return $success;
+    return true;
 }
 
 function download_and_extract($mutable_directory, $partition, $package_data)
 {
     $prefix = str_replace('/', '-', $package_data['name']);
-    $archive_path = tempnam(sys_get_temp_dir(), $prefix) . $package_data['dist']['type'];
     $path_in_project = $mutable_directory . '/' . $partition . '/vendor/' . $package_data['name'];
 
+    $archive_path = tempnam(sys_get_temp_dir(), $prefix) . '.' . $package_data['dist']['type'];
     $fp = fopen($archive_path, 'w+');
+    //$fp = tmpfile();
 
     if (!$fp)
     {
@@ -117,6 +118,7 @@ function download_and_extract($mutable_directory, $partition, $package_data)
     curl_setopt($ch, CURLOPT_URL, $dist_url);
     curl_setopt($ch, CURLOPT_FILE, $fp);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Rot/0.1');
     $success = curl_exec($ch);
     curl_close($ch);
     fclose($fp);
@@ -157,6 +159,21 @@ function download_and_extract($mutable_directory, $partition, $package_data)
         die('Rot: Unsupported package dist type: ' . $package_data['dist']['type']);
     }
 
+    // Update the dist metadata.
+    $dist_path = $path_in_project . '/dist.json';
+    $dist_raw = json_encode($package_data['dist']);
+    $dfp = fopen($dist_path, 'w+');
+    if (!$dfp)
+    {
+        die('Rot: Failed to open dist metadata for writing: ' . $dist_path);
+    }
+    $bytes_written = fwrite($dfp, $dist_raw);
+    if (!$bytes_written)
+    {
+        die('Rot: Failed to write dist metadata: ' . $dist_path);
+    }
+    fclose($dfp);
+
     return true;
 }
 
@@ -166,7 +183,7 @@ function is_package_stale($mutable_directory, $partition, $package_data)
 
     $package_dist = $package_data['dist'];
     $current_dist = false;
-    $dist_path = $mutable_directory . '/vendor/' . $package_data['name'] . '/dist.json';
+    $dist_path = $mutable_directory . '/' . $partition . '/vendor/' . $package_data['name'] . '/dist.json';
     if (file_exists($dist_path))
     {
         $current_dist_raw = file_get_contents($dist_path);
@@ -174,11 +191,11 @@ function is_package_stale($mutable_directory, $partition, $package_data)
         {
             $current_dist = json_decode($current_dist_raw, true);
         }
+    }
 
-        if (!$current_dist || $current_dist !==  $package_dist)
-        {
-            return true;
-        }
+    if (!$current_dist || $current_dist !==  $package_dist)
+    {
+        return true;
     }
 
     return false;
@@ -222,14 +239,18 @@ function freshen_up($mutable_directory, $partition, array $manifest, $max_to_fre
     $freshened = 0;
     foreach($manifest['packages'] as $package_data)
     {
+        echo 'Rot: Checking package: ' . $package_data['name'] . PHP_EOL;
         if (is_package_stale($mutable_directory, $partition, $package_data))
         {
+            echo '  - Package is missing or stale.' . PHP_EOL;
             if (download_and_extract($mutable_directory, $partition, $package_data))
             {
                 ++$freshened;
             } else {
                 return false;
             }
+        } else {
+            echo '  - Package is fresh.' . PHP_EOL;
         }
 
         if ($max_to_freshen && $freshened >= $max_to_freshen)
@@ -271,27 +292,27 @@ $manifest = get_manifest($project_config);
 $mutable_dir = get_mutable_directory($immutable_dir);
 
 $active_config = get_active_configuration($mutable_dir);
-$initializing = false;
+$initialized = true;
 if (!$active_config)
 {
     $active_config = new \stdClass();
     $active_config->partition = 'a';
-    $initializing = true;
+    $initialized = false;
 }
 
 // Either freshen the current partition (if initializing) or the inactive one.
-if ($initializing)
+if ($initialized)
 {
-    $freshen_partition = $active_config->partition;
-} else {
     $freshen_partition = get_other_partition($active_config->partition);
+} else {
+    $freshen_partition = $active_config->partition;
 }
 
-$totally_fresh = freshen_up($mutable_dir, $freshen_partition, $manifest, $initializing ? 8 : 1);
+$totally_fresh = freshen_up($mutable_dir, $freshen_partition, $manifest, $initialized ? 1 : 8);
 if ($totally_fresh)
 {
     // If done initializing *or* the inactive partition is fresher, set the active one.
-    if ($initializing || count_stale($mutable_dir, $active_config->partition, $manifest))
+    if (!$initialized || count_stale($mutable_dir, $active_config->partition, $manifest))
     {
         // Write a configuration for the fresh one (current or other).
         $active_config = new \stdClass();
@@ -302,7 +323,7 @@ if ($totally_fresh)
             die('Rot: Failed to switch active configuration following completed freshening.');
         }
     }
-} else if ($initializing) {
+} else if (!$initialized) {
     die('Rot: Still initializing. Please reload.');
 }
 
